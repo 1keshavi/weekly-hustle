@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,7 @@ import { toast } from "@/hooks/use-toast";
 
 const OrganizerDashboard = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, session, logout, loading } = useAuth();
   const [events, setEvents] = useState<Event[]>(INITIAL_EVENTS);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -28,8 +28,21 @@ const OrganizerDashboard = () => {
     venue: "",
   });
 
-  if (!user || user.role !== "organizer") {
-    navigate("/");
+  useEffect(() => {
+    if (!loading && !session) {
+      navigate("/login");
+    }
+  }, [session, loading, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
     return null;
   }
 
@@ -89,8 +102,8 @@ const OrganizerDashboard = () => {
     });
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/");
   };
 
@@ -105,7 +118,7 @@ const OrganizerDashboard = () => {
               CAMPUS-POP
             </h1>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">{user.email}</span>
+              <span className="text-sm text-muted-foreground">{user?.email}</span>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
