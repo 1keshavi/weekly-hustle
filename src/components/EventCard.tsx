@@ -3,7 +3,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Event } from "@/types/event";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface EventCardProps {
   event: Event;
@@ -13,8 +16,102 @@ interface EventCardProps {
 }
 
 const EventCard = ({ event, isOrganizer, onEdit, onDelete }: EventCardProps) => {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [isInterested, setIsInterested] = useState(false);
   const [isGoing, setIsGoing] = useState(false);
+  const [interestedCount, setInterestedCount] = useState(event.interested_count);
+  const [goingCount, setGoingCount] = useState(event.going_count);
+
+  useEffect(() => {
+    if (user && !isOrganizer) {
+      fetchParticipationStatus();
+    }
+  }, [user, event.id]);
+
+  const fetchParticipationStatus = async () => {
+    if (!user) return;
+    
+    const { data, error } = await supabase
+      .from("event_participation")
+      .select("status")
+      .eq("event_id", event.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!error && data) {
+      setIsInterested(data.status === "interested");
+      setIsGoing(data.status === "going");
+    }
+  };
+
+  const handleParticipation = async (status: "interested" | "going") => {
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Authentication required",
+        description: "Please log in to participate in events",
+      });
+      return;
+    }
+
+    const newIsInterested = status === "interested" ? !isInterested : false;
+    const newIsGoing = status === "going" ? !isGoing : false;
+
+    // If both are false, delete the participation record
+    if (!newIsInterested && !newIsGoing) {
+      const { error } = await supabase
+        .from("event_participation")
+        .delete()
+        .eq("event_id", event.id)
+        .eq("user_id", user.id);
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message,
+        });
+        return;
+      }
+    } else {
+      // Upsert the participation record
+      const { error } = await supabase
+        .from("event_participation")
+        .upsert({
+          event_id: event.id,
+          user_id: user.id,
+          status: status,
+        }, {
+          onConflict: "user_id,event_id"
+        });
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message,
+        });
+        return;
+      }
+    }
+
+    // Update local state
+    setIsInterested(newIsInterested);
+    setIsGoing(newIsGoing);
+
+    // Fetch updated counts
+    const { data: eventData } = await supabase
+      .from("events")
+      .select("interested_count, going_count")
+      .eq("id", event.id)
+      .single();
+
+    if (eventData) {
+      setInterestedCount(eventData.interested_count);
+      setGoingCount(eventData.going_count);
+    }
+  };
 
   const formatDateTime = (dateTime: string) => {
     const date = new Date(dateTime);
@@ -59,7 +156,7 @@ const EventCard = ({ event, isOrganizer, onEdit, onDelete }: EventCardProps) => 
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Users className="h-4 w-4 text-primary" />
-            <span>{event.interested_count} interested · {event.going_count} going</span>
+            <span>{interestedCount} interested · {goingCount} going</span>
           </div>
         </div>
 
@@ -80,7 +177,7 @@ const EventCard = ({ event, isOrganizer, onEdit, onDelete }: EventCardProps) => 
               <Button
                 variant={isInterested ? "default" : "outline"}
                 size="sm"
-                onClick={() => setIsInterested(!isInterested)}
+                onClick={() => handleParticipation("interested")}
                 className="flex-1 transition-all duration-200"
               >
                 {isInterested ? "✓ Interested" : "Interested"}
@@ -88,7 +185,7 @@ const EventCard = ({ event, isOrganizer, onEdit, onDelete }: EventCardProps) => 
               <Button
                 variant={isGoing ? "default" : "outline"}
                 size="sm"
-                onClick={() => setIsGoing(!isGoing)}
+                onClick={() => handleParticipation("going")}
                 className="flex-1 transition-all duration-200"
               >
                 {isGoing ? "✓ Going" : "Going"}

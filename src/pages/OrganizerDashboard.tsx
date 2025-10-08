@@ -12,6 +12,7 @@ import BackgroundAnimation from "@/components/BackgroundAnimation";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Event } from "@/types/event";
+import { eventSchema } from "@/lib/validationSchemas";
 
 const OrganizerDashboard = () => {
   const { user, logout } = useAuth();
@@ -84,6 +85,25 @@ const OrganizerDashboard = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate inputs
+    const validation = eventSchema.safeParse({
+      title: formData.title,
+      description: formData.description,
+      category: formData.category,
+      tags: formData.tags ? formData.tags.split(",").map(tag => tag.trim()) : [],
+      venue: formData.venue,
+      eventDateTime: `${formData.date}T${formData.time}`,
+    });
+    
+    if (!validation.success) {
+      toast({
+        variant: "destructive",
+        title: "Validation error",
+        description: validation.error.errors[0].message,
+      });
+      return;
+    }
 
     const eventDateTime = new Date(`${formData.date}T${formData.time}`);
     if (eventDateTime < new Date()) {

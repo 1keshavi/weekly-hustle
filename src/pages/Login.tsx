@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BackgroundAnimation from "@/components/BackgroundAnimation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { loginSchema, signupSchema } from "@/lib/validationSchemas";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -19,6 +20,18 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate inputs
+    const validation = loginSchema.safeParse({ email, password });
+    if (!validation.success) {
+      toast({
+        variant: "destructive",
+        title: "Validation error",
+        description: validation.error.errors[0].message,
+      });
+      return;
+    }
+    
     const { error } = await login(email, password);
     
     if (error) {
@@ -41,6 +54,17 @@ const Login = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validate inputs
+    const validation = signupSchema.safeParse({ email, password });
+    if (!validation.success) {
+      toast({
+        variant: "destructive",
+        title: "Validation error",
+        description: validation.error.errors[0].message,
+      });
+      return;
+    }
+    
     if (role === "student" && !email.endsWith("@skit.ac.in")) {
       toast({
         title: "Invalid email",
@@ -50,7 +74,7 @@ const Login = () => {
       return;
     }
     
-    const { error } = await signup(email, password);
+    const { error } = await signup(email, password, undefined, role);
     
     if (error) {
       toast({
