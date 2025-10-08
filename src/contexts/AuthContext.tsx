@@ -1,73 +1,44 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { User, Session } from "@supabase/supabase-js";
+import { createContext, useContext, useState, ReactNode } from "react";
+
+interface User {
+  email: string;
+  role: "student" | "organizer";
+}
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
-  login: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signup: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
-  logout: () => Promise<void>;
-  loading: boolean;
+  login: (email: string, password: string, role: "student" | "organizer") => Promise<boolean>;
+  signup: (email: string, password: string, role: "student" | "organizer") => Promise<boolean>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const login = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error: error as Error | null };
+  const login = async (email: string, password: string, role: "student" | "organizer") => {
+    if (role === "student" && !email.endsWith("@college.edu")) {
+      return false;
+    }
+    setUser({ email, role });
+    return true;
   };
 
-  const signup = async (email: string, password: string, fullName?: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-        },
-      },
-    });
-    return { error: error as Error | null };
+  const signup = async (email: string, password: string, role: "student" | "organizer") => {
+    if (role === "student" && !email.endsWith("@college.edu")) {
+      return false;
+    }
+    setUser({ email, role });
+    return true;
   };
 
-  const logout = async () => {
-    await supabase.auth.signOut();
+  const logout = () => {
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

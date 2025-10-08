@@ -19,12 +19,12 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await login(email, password);
+    const success = await login(email, password, role);
     
-    if (error) {
+    if (!success) {
       toast({
         title: "Login Failed",
-        description: error.message || "Please check your credentials",
+        description: "Students must use a @college.edu email address",
         variant: "destructive",
       });
       return;
@@ -40,12 +40,12 @@ const Login = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await signup(email, password);
+    const success = await signup(email, password, role);
     
-    if (error) {
+    if (!success) {
       toast({
         title: "Signup Failed",
-        description: error.message || "Please try again",
+        description: "Students must use a @college.edu email address",
         variant: "destructive",
       });
       return;
@@ -53,7 +53,7 @@ const Login = () => {
 
     toast({
       title: "Success",
-      description: "Account created! You can now log in.",
+      description: "Account created successfully",
     });
 
     navigate(role === "student" ? "/student-feed" : "/organizer-dashboard");

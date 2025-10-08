@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Filter, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,72 +7,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import EventCard from "@/components/EventCard";
 import BackgroundAnimation from "@/components/BackgroundAnimation";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
-import { Event } from "@/types/event";
+import { INITIAL_EVENTS } from "@/types/event";
 
 const StudentFeed = () => {
   const navigate = useNavigate();
-  const { user, session, logout, loading } = useAuth();
+  const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [events, setEvents] = useState<Event[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState("all");
 
-  useEffect(() => {
-    if (!loading && !session) {
-      navigate("/login");
-    }
-  }, [session, loading, navigate]);
-
-  useEffect(() => {
-    if (session) {
-      fetchEvents();
-    }
-  }, [session]);
-
-  const fetchEvents = async () => {
-    try {
-      setEventsLoading(true);
-      const { data: eventsData, error } = await (supabase as any)
-        .from("events")
-        .select("*")
-        .order("event_date_time", { ascending: true });
-
-      if (error) throw error;
-
-      // Transform database data to match Event interface
-      const transformedEvents: Event[] = (eventsData || []).map((event: any) => ({
-        id: event.id,
-        title: event.title,
-        club: "Campus Club",
-        description: event.description || "",
-        category: event.category || "Other",
-        tags: event.tags || [],
-        dateTime: event.event_date_time,
-        venue: event.venue || "TBA",
-        createdBy: event.created_by,
-        interested: event.interested_count || 0,
-        going: event.going_count || 0,
-      }));
-
-      setEvents(transformedEvents);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to fetch events",
-        variant: "destructive",
-      });
-    } finally {
-      setEventsLoading(false);
-    }
-  };
+  if (!user || user.role !== "student") {
+    navigate("/");
+    return null;
+  }
 
   const getCurrentWeekEvents = () => {
     const now = new Date();
     const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     
-    return events.filter(event => {
+    return INITIAL_EVENTS.filter(event => {
       const eventDate = new Date(event.dateTime);
       return eventDate >= now && eventDate <= weekFromNow;
     });
@@ -86,22 +39,10 @@ const StudentFeed = () => {
     return matchesSearch && matchesCategory;
   });
 
-  const handleLogout = async () => {
-    await logout();
+  const handleLogout = () => {
+    logout();
     navigate("/");
   };
-
-  if (loading || eventsLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return null;
-  }
 
   return (
     <div className="min-h-screen bg-background relative">
@@ -114,7 +55,7 @@ const StudentFeed = () => {
               CAMPUS-POP
             </h1>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">{user?.email}</span>
+              <span className="text-sm text-muted-foreground">{user.email}</span>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
