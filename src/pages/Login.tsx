@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,37 +7,24 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BackgroundAnimation from "@/components/BackgroundAnimation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
-import { loginSchema, signupSchema } from "@/lib/validationSchemas";
+import { toast } from "@/hooks/use-toast";
+import { Link } from "react-router-dom";
 
 const Login = () => {
   const navigate = useNavigate();
   const { login, signup } = useAuth();
-  const { toast } = useToast();
   const [role, setRole] = useState<"student" | "organizer">("student");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    const success = await login(email, password, role);
     
-    // Validate inputs
-    const validation = loginSchema.safeParse({ email, password });
-    if (!validation.success) {
-      toast({
-        variant: "destructive",
-        title: "Validation error",
-        description: validation.error.errors[0].message,
-      });
-      return;
-    }
-    
-    const { error } = await login(email, password);
-    
-    if (error) {
+    if (!success) {
       toast({
         title: "Login Failed",
-        description: error.message,
+        description: "Students must use a @college.edu email address",
         variant: "destructive",
       });
       return;
@@ -53,33 +40,12 @@ const Login = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    const success = await signup(email, password, role);
     
-    // Validate inputs
-    const validation = signupSchema.safeParse({ email, password });
-    if (!validation.success) {
-      toast({
-        variant: "destructive",
-        title: "Validation error",
-        description: validation.error.errors[0].message,
-      });
-      return;
-    }
-    
-    if (role === "student" && !email.endsWith("@skit.ac.in")) {
-      toast({
-        title: "Invalid email",
-        description: "Students must use @skit.ac.in email address",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const { error } = await signup(email, password, undefined, role);
-    
-    if (error) {
+    if (!success) {
       toast({
         title: "Signup Failed",
-        description: error.message,
+        description: "Students must use a @college.edu email address",
         variant: "destructive",
       });
       return;
@@ -157,7 +123,7 @@ const Login = () => {
                         onChange={(e) => setEmail(e.target.value)}
                         required
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Must end with @skit.ac.in</p>
+                      <p className="text-xs text-muted-foreground mt-1">Must end with @college.edu</p>
                     </div>
                     <div>
                       <Label htmlFor="signup-password">Password</Label>
