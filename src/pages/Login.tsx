@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,24 +7,24 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BackgroundAnimation from "@/components/BackgroundAnimation";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "@/hooks/use-toast";
-import { Link } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
 
 const Login = () => {
   const navigate = useNavigate();
   const { login, signup } = useAuth();
+  const { toast } = useToast();
   const [role, setRole] = useState<"student" | "organizer">("student");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await login(email, password, role);
+    const { error } = await login(email, password);
     
-    if (!success) {
+    if (error) {
       toast({
         title: "Login Failed",
-        description: "Students must use a @college.edu email address",
+        description: error.message,
         variant: "destructive",
       });
       return;
@@ -40,12 +40,22 @@ const Login = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await signup(email, password, role);
     
-    if (!success) {
+    if (role === "student" && !email.endsWith("@skit.ac.in")) {
+      toast({
+        title: "Invalid email",
+        description: "Students must use @skit.ac.in email address",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const { error } = await signup(email, password);
+    
+    if (error) {
       toast({
         title: "Signup Failed",
-        description: "Students must use a @college.edu email address",
+        description: error.message,
         variant: "destructive",
       });
       return;
@@ -123,7 +133,7 @@ const Login = () => {
                         onChange={(e) => setEmail(e.target.value)}
                         required
                       />
-                      <p className="text-xs text-muted-foreground mt-1">Must end with @college.edu</p>
+                      <p className="text-xs text-muted-foreground mt-1">Must end with @skit.ac.in</p>
                     </div>
                     <div>
                       <Label htmlFor="signup-password">Password</Label>

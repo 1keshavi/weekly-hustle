@@ -39,9 +39,6 @@ const EventCard = ({ event, isOrganizer, onEdit, onDelete }: EventCardProps) => 
               <h3 className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors">
                 {event.title}
               </h3>
-              <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                {event.club}
-              </Badge>
             </div>
             <Badge variant="outline" className="border-primary/30 text-primary">
               {event.category}
@@ -54,7 +51,7 @@ const EventCard = ({ event, isOrganizer, onEdit, onDelete }: EventCardProps) => 
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Calendar className="h-4 w-4 text-primary" />
-            <span className="font-medium">{formatDateTime(event.dateTime)}</span>
+            <span className="font-medium">{formatDateTime(event.event_date_time)}</span>
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <MapPin className="h-4 w-4 text-primary" />
@@ -62,11 +59,11 @@ const EventCard = ({ event, isOrganizer, onEdit, onDelete }: EventCardProps) => 
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Users className="h-4 w-4 text-primary" />
-            <span>{event.interested} interested · {event.going} going</span>
+            <span>{event.interested_count} interested · {event.going_count} going</span>
           </div>
         </div>
 
-        {event.tags.length > 0 && (
+        {event.tags && event.tags.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             <Tag className="h-4 w-4 text-primary" />
             {event.tags.map((tag, index) => (

@@ -1,22 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, LogOut } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import EventCard from "@/components/EventCard";
 import BackgroundAnimation from "@/components/BackgroundAnimation";
-import { useAuth } from "@/contexts/AuthContext";
-import { Event, INITIAL_EVENTS } from "@/types/event";
-import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import type { Event } from "@/types/event";
 
 const OrganizerDashboard = () => {
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [events, setEvents] = useState<Event[]>(INITIAL_EVENTS);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
@@ -24,117 +26,181 @@ const OrganizerDashboard = () => {
     description: "",
     category: "",
     tags: "",
-    dateTime: "",
+    date: "",
+    time: "",
     venue: "",
   });
 
-  if (!user || user.role !== "organizer") {
-    navigate("/");
-    return null;
-  }
+  useEffect(() => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const eventDate = new Date(formData.dateTime);
-    const now = new Date();
-    const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    fetchEvents();
 
-    if (eventDate < now || eventDate > weekFromNow) {
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel('organizer-events-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'events'
+        },
+        () => {
+          fetchEvents();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, navigate]);
+
+  const fetchEvents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('created_by', user?.id)
+        .order('event_date_time', { ascending: true });
+
+      if (error) throw error;
+
+      setEvents(data || []);
+    } catch (error: any) {
       toast({
-        title: "Invalid Date",
-        description: "Event must be within the current week",
+        title: "Error fetching events",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const eventDateTime = new Date(`${formData.date}T${formData.time}`);
+    if (eventDateTime < new Date()) {
+      toast({
+        title: "Invalid date",
+        description: "Event date must be in the future",
         variant: "destructive",
       });
       return;
     }
 
-    const newEvent: Event = {
-      id: Date.now().toString(),
-      title: formData.title,
-      club: formData.club,
-      description: formData.description,
-      category: formData.category,
-      tags: formData.tags.split(",").map(tag => tag.trim()),
-      dateTime: formData.dateTime,
-      venue: formData.venue,
-      createdBy: user.email,
-      interested: 0,
-      going: 0,
-    };
+    try {
+      const { error } = await supabase.from('events').insert({
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        tags: formData.tags.split(',').map(tag => tag.trim()),
+        event_date_time: eventDateTime.toISOString(),
+        venue: formData.venue,
+        created_by: user?.id,
+      });
 
-    setEvents([newEvent, ...events]);
-    setIsDialogOpen(false);
-    setFormData({
-      title: "",
-      club: "",
-      description: "",
-      category: "",
-      tags: "",
-      dateTime: "",
-      venue: "",
-    });
+      if (error) throw error;
 
-    toast({
-      title: "Success",
-      description: "Event created successfully",
-    });
+      toast({
+        title: "Success",
+        description: "Event created successfully",
+      });
+
+      setIsDialogOpen(false);
+      setFormData({
+        title: "",
+        club: "",
+        description: "",
+        category: "",
+        tags: "",
+        date: "",
+        time: "",
+        venue: "",
+      });
+      
+      fetchEvents();
+    } catch (error: any) {
+      toast({
+        title: "Error creating event",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDelete = (eventId: string) => {
-    setEvents(events.filter(event => event.id !== eventId));
-    toast({
-      title: "Success",
-      description: "Event deleted successfully",
-    });
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Event deleted successfully",
+      });
+      
+      fetchEvents();
+    } catch (error: any) {
+      toast({
+        title: "Error deleting event",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/");
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Loading events...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background relative">
+    <div className="min-h-screen bg-background">
       <BackgroundAnimation />
       
       <div className="relative z-10">
-        <header className="bg-card/80 backdrop-blur-sm border-b border-primary/20 sticky top-0 z-20">
-          <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent animate-pulse">
-              CAMPUS-POP
-            </h1>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">{user.email}</span>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
-            </div>
+        <header className="sticky top-0 bg-background/80 backdrop-blur-sm border-b border-border p-4 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-foreground">Organizer Dashboard</h1>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">{user?.email}</span>
+            <Button onClick={handleLogout} variant="outline">
+              Logout
+            </Button>
           </div>
         </header>
 
-        <main className="container mx-auto px-4 py-8">
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <h2 className="text-4xl font-bold mb-2">Organizer Dashboard</h2>
-              <p className="text-muted-foreground">Manage your campus events</p>
-            </div>
-            
+        <main className="container mx-auto p-6">
+          <div className="mb-6">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="lg" className="gap-2">
-                  <Plus className="h-5 w-5" />
-                  Create Event
-                </Button>
+                <Button>Create Event</Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Event</DialogTitle>
+                  <DialogDescription>Fill in the details to create a new campus event</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <Label htmlFor="title">Event Title *</Label>
+                    <Label htmlFor="title">Event Title</Label>
                     <Input
                       id="title"
                       required
@@ -142,19 +208,9 @@ const OrganizerDashboard = () => {
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     />
                   </div>
-                  
+
                   <div>
-                    <Label htmlFor="club">Club Name *</Label>
-                    <Input
-                      id="club"
-                      required
-                      value={formData.club}
-                      onChange={(e) => setFormData({ ...formData, club: e.target.value })}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="description">Description *</Label>
+                    <Label htmlFor="description">Description</Label>
                     <Textarea
                       id="description"
                       required
@@ -162,45 +218,60 @@ const OrganizerDashboard = () => {
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     />
                   </div>
-                  
+
                   <div>
-                    <Label htmlFor="category">Category *</Label>
-                    <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                    <Label htmlFor="category">Category</Label>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) => setFormData({ ...formData, category: value })}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Competition">Competition</SelectItem>
+                        <SelectItem value="Technical">Technical</SelectItem>
+                        <SelectItem value="Cultural">Cultural</SelectItem>
+                        <SelectItem value="Sports">Sports</SelectItem>
                         <SelectItem value="Workshop">Workshop</SelectItem>
-                        <SelectItem value="Audition">Audition</SelectItem>
-                        <SelectItem value="Social">Social</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div>
                     <Label htmlFor="tags">Tags (comma-separated)</Label>
                     <Input
                       id="tags"
-                      placeholder="e.g., Technology, Networking, Career"
                       value={formData.tags}
                       onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                      placeholder="coding, hackathon, prizes"
                     />
                   </div>
-                  
-                  <div>
-                    <Label htmlFor="dateTime">Date & Time *</Label>
-                    <Input
-                      id="dateTime"
-                      type="datetime-local"
-                      required
-                      value={formData.dateTime}
-                      onChange={(e) => setFormData({ ...formData, dateTime: e.target.value })}
-                    />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="date">Date</Label>
+                      <Input
+                        id="date"
+                        type="date"
+                        required
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="time">Time</Label>
+                      <Input
+                        id="time"
+                        type="time"
+                        required
+                        value={formData.time}
+                        onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                      />
+                    </div>
                   </div>
-                  
+
                   <div>
-                    <Label htmlFor="venue">Venue *</Label>
+                    <Label htmlFor="venue">Venue</Label>
                     <Input
                       id="venue"
                       required
@@ -208,7 +279,7 @@ const OrganizerDashboard = () => {
                       onChange={(e) => setFormData({ ...formData, venue: e.target.value })}
                     />
                   </div>
-                  
+
                   <Button type="submit" className="w-full">Create Event</Button>
                 </form>
               </DialogContent>
@@ -217,16 +288,15 @@ const OrganizerDashboard = () => {
 
           {events.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground text-lg">No events yet. Create your first event!</p>
+              <p className="text-muted-foreground">No events created yet</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {events.map(event => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  isOrganizer
-                  onDelete={handleDelete}
+              {events.map((event) => (
+                <EventCard 
+                  key={event.id} 
+                  event={event} 
+                  onDelete={() => handleDelete(event.id)}
                 />
               ))}
             </div>
